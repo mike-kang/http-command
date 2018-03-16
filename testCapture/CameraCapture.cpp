@@ -16,22 +16,22 @@ CameraCapture::CameraCapture(const char* ip, const char* name)
 {
 	strcpy(m_ip, ip);
 	strcpy(m_name, name);
-
+	m_img.len = 0;
+	m_img.data = NULL;
 	ZeroMemory(&m_serveraddr, sizeof(m_serveraddr));
 	m_serveraddr.sin_family = AF_INET;
 	m_serveraddr.sin_addr.s_addr = inet_addr(m_ip);
 	m_serveraddr.sin_port = htons(80);
-
-	m_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (m_sock == INVALID_SOCKET) throw 1;
+	
 }
 
-bool CameraCapture::connect()
+bool CameraCapture::_connect()
 {
 	int retval;
-
+	
 	retval = ::connect(m_sock, (SOCKADDR *)&m_serveraddr, sizeof(m_serveraddr));
 	if (retval == SOCKET_ERROR) {
+		printf("connect: get error %d\n", WSAGetLastError());
 		closesocket(m_sock);
 		return false;
 	}
@@ -41,8 +41,12 @@ bool CameraCapture::connect()
 bool CameraCapture::capture()
 {
 	int retval;
-	// 데이터 보내기
 	char buf[4096];
+
+	m_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (m_sock == INVALID_SOCKET) throw 1;
+
+	_connect();
 
 	sprintf(buf, HTTP_HEAD_FMT, m_ip);
 	retval = send(m_sock, buf, strlen(buf), 0);
@@ -58,9 +62,11 @@ bool CameraCapture::capture()
 	while (left > 0) {
 		received = recv(m_sock, p, left, 0);
 		if (received == SOCKET_ERROR) {
+			printf("get error2 %d\n", WSAGetLastError());
 			return false;;
 		}
 		else if (received == 0) {
+			printf("received2 == 0\n");
 			return false;
 		}
 		left -= received;
@@ -70,8 +76,18 @@ bool CameraCapture::capture()
 	p = strstr(buf, "Content-Length:");
 	if (!p)
 		return false;
-	m_img.len = atoi(p + strlen("Content-Length:"));
-	char* image = new char[m_img.len];
+	int len = atoi(p + strlen("Content-Length:"));
+	if (m_img.len < len) {
+		if (!m_img.data)
+			m_img.data = (char*)malloc(len);
+		else
+			m_img.data = (char*)realloc(m_img.data, len);
+		m_img.len = len;
+	}
+	else if (m_img.len > len)
+		m_img.len = len;
+
+	char* image = m_img.data;
 	p = strstr(p, "\r\n\r\n");
 	int pre_read = 1024 - ((p - buf) + 4);
 	memcpy(image, p + 4, pre_read);
@@ -81,16 +97,18 @@ bool CameraCapture::capture()
 	while (left > 0) {
 		received = recv(m_sock, p, MIN(left, 4096), 0);
 		if (received == SOCKET_ERROR) {
+			printf("get error3 %d\n", WSAGetLastError());
 			return false;
 		}
 		else if (received == 0) {
+			printf("received == 0\n");
 			return false;
 		}
 		left -= received;
 		p += received;
 	}
-	m_img.data = image;
 
+	closesocket(m_sock);
 	return true;
 }
 
@@ -99,14 +117,8 @@ image_t* CameraCapture::getImage()
 	return &m_img;
 }
 
-void CameraCapture::releaseImageData()
-{
-	delete [] m_img.data;
-	m_img.data = NULL;
-}
-
 CameraCapture::~CameraCapture()
 {
 	printf("~CameraCapture\n");
-	closesocket(m_sock);
+	free(m_img.data);
 }

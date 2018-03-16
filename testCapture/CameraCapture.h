@@ -12,13 +12,14 @@ class CameraCapture
 public:
 	CameraCapture(const char* ip, const char* name);
 	~CameraCapture();
-	bool connect();
+
 	bool capture();
 	image_t* getImage();
-	void releaseImageData();
 	char* getName() { return m_name; }
 
 private:
+	bool _connect();
+
 	SOCKET m_sock;
 	SOCKADDR_IN m_serveraddr;
 	char m_ip[16];

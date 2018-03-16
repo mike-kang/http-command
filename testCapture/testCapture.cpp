@@ -29,8 +29,11 @@ char* make_name(const char*ip)
 
 static void do_capture(CameraCapture* cc)
 {
-	cc->capture();
-
+	if (!cc->capture()) {
+		printf("capture error!\n");
+		return;
+	}
+	//printf("do_capture!\n");
 	FILE* fp = fopen(cc->getName(), "wb");
 	image_t* img = cc->getImage();
 	fwrite(img->data, img->len, 1, fp);
@@ -42,18 +45,18 @@ int main(int argc, char *argv[])
 	int retval;
 	vector<string> vec_ip;
 	vector<CameraCapture*> vec_cc;
-	vector<thread*> vec_thread;
+
 
 	if (argc < 1) {
 		printf("%s ip or %s list.txt\n");
 		return 0;
 	}
-	
+
 	if (!strcmp(argv[1], "list.txt")) {
 		ifstream infile("list.txt");
 		string line;
-		
-		while(std::getline(infile, line))
+
+		while (std::getline(infile, line))
 		{
 			vec_ip.push_back(line);
 		}
@@ -71,29 +74,26 @@ int main(int argc, char *argv[])
 		CameraCapture* cc = new CameraCapture(ip.c_str(), name);
 		vec_cc.push_back(cc);
 	}
+		
+	for (int j = 0; j < 3; j++) {
+		vector<thread*> vec_thread;
+		clock_t current_tick = clock();
 
-	//connect
-	for (auto cc : vec_cc) {
-		cc->connect();
-	}
+		//capture
+		for (auto cc : vec_cc) {
+			vec_thread.push_back(new thread(do_capture, cc));
+		}
 
-	clock_t current_tick = clock();
-	//capture
-	for (auto cc : vec_cc) {
-		vec_thread.push_back(new thread(do_capture, cc));
-	}
+		//join
+		for (int i = 0; i < vec_thread.size(); i++) {
+			vec_thread[i]->join();
+			delete vec_thread[i];
+		}
 
-	//join
-	for (int i = 0; i < vec_thread.size(); i++) {
-		vec_thread[i]->join();
-	}
-	printf("[time] %f\n", (clock() - current_tick) / (double)CLOCKS_PER_SEC);
-
-	//release
-	for (auto cc : vec_cc) {
-		cc->releaseImageData();
-	}
+		printf("[time] %f\n", (clock() - current_tick) / (double)CLOCKS_PER_SEC);
 	
+		Sleep(3000);
+	}
 
 	// 윈속 종료
 	WSACleanup();
